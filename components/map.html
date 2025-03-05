@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Draw a polygon and calculate its area</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+<style>
+    body { 
+        margin: 0; 
+        padding: 0; 
+        font-family: 'Open Sans', sans-serif; /* Шрифт Open Sans */
+    }
+
+    #map { 
+        position: absolute; 
+        top: 0; 
+        bottom: 0; 
+        width: 100%; /* Ширина карты */
+    }
+
+    .calculation-box {
+        height: auto;
+        width: 200px;
+        position: absolute;
+        bottom: 40px;
+        left: 10px;
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 15px;
+        text-align: left;
+        border-radius: 8px; /* Скругленные углы */
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Тень вокруг блока */
+        font-size: 14px; /* Размер шрифта */
+        color: #333; /* Цвет текста */
+    }
+
+    .calculation-box hr {
+        border-top: 1px solid #ccc; /* Разделительная линия */
+        margin-top: 10px; /* Отступ сверху для разделительной линии */
+        margin-bottom: 10px; /* Отступ снизу для разделительной линии */
+    }
+
+    .calculation-box p {
+        margin: 5px 0; /* Отступы между параграфами */
+    }
+
+    .calculation-box p strong {
+        font-size: 16px; /* Размер шрифта для числовых значений */
+        color: #000; /* Цвет числовых значений */
+    }
+
+    #style-selector {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1;
+        background-color: #f0f0f0; /* Светло-серый цвет */
+        padding: 5px; /* Поля вокруг элемента */
+        border-radius: 4px; /* Скругленные углы */
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Тень вокруг элемента */
+    }
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css">
+<div id="map"></div>
+<div class="calculation-box">
+    <p>Кликни по карте, чтобы нарисовать полигон участка</p>
+    <hr> <!-- Разделительная линия -->
+    <div id="calculated-area"></div>
+    <button onclick="toggleFullscreen()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; background-color: #ACACAD; color: #ECEBE5;">Полноэкранный режим</button>
+</div>
+<div class="calculation-box" id="sidebar">
+    <div id="calculated-area"></div>
+</div>
+<select id="style-selector">
+    <option value="mapbox://styles/mapbox/streets-v11">Улицы</option>
+    <option value="mapbox://styles/mapbox/outdoors-v11">Атмосфера</option>
+    <option value="mapbox://styles/mapbox/light-v10">Светлая</option>
+    <option value="mapbox://styles/mapbox/dark-v10">Тёмная</option>
+    <option value="mapbox://styles/mapbox/satellite-v9">Спутник</option>
+    <option value="mapbox://styles/mapbox/satellite-streets-v11">Спутник (улицы)</option>
+</select>
+<button onclick="toggleFullscreen()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; background-color: #ACACAD; color: #ECEBE5;">Полноэкранный режим</button>
+
+<script>
+    function toggleFullScreen() {
+        var button = document.querySelector('.button-container .button:nth-child(2)');
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+            button.textContent = 'Свернуть';
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+                button.textContent = 'Во весь экран';
+            }
+        }
+    }
+</script>
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiYWxpbmFjaCIsImEiOiJjbGlpcnZpaTgwMTZ4M2twaGo1NjRsNHhhIn0.9jw_R_D1i1nqOtaolld-dQ';
+const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/streets-v11',
+    center: [76.879751, 43.24517],
+    zoom: 16,
+    pitch: 45 // Угол наклона карты для отображения 3D-эффекта
+});
+
+map.on('load', function() {
+    // Добавляем слой 3D-зданий
+    map.addLayer({
+        'id': '3d-buildings',
+        'source': 'composite',
+        'source-layer': 'building',
+        'filter': ['==', 'extrude', 'true'],
+        'type': 'fill-extrusion',
+        'minzoom': 15,
+        'paint': {
+            'fill-extrusion-color': '#aaa',
+            'fill-extrusion-height': [
+                'interpolate', ['linear'], ['zoom'],
+                15, 0,
+                15.05, ['get', 'height']
+            ],
+            'fill-extrusion-base': [
+                'interpolate', ['linear'], ['zoom'],
+                15, 0,
+                15.05, ['get', 'min_height']
+            ],
+            'fill-extrusion-opacity': 0.6
+        }
+    });
+});
+const draw = new MapboxDraw({
+    displayControlsDefault: false,
+    controls: {
+        polygon: true,
+        trash: true
+    },
+    defaultMode: 'draw_polygon',
+    styles: [
+        // Переопределение стилей для полигона
+        {
+            'id': 'gl-draw-polygon-fill',
+            'type': 'fill',
+            'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+            'paint': {
+                'fill-color': '#183F71', // Синий цвет
+                'fill-opacity': 0.3
+            }
+        },
+        {
+            'id': 'gl-draw-polygon-stroke-active',
+            'type': 'line',
+            'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+            'layout': {
+                'line-cap': 'round',
+                'line-join': 'round'
+            },
+            'paint': {
+                'line-color': '#f2d411', // Жёлтый цвет
+                'line-width': 2
+            }
+        },
+        // Стили для вершин полигона (точек)
+        {
+            'id': 'gl-draw-point',
+            'type': 'circle',
+            'filter': ['all', ['==', '$type', 'Point'], ['!=', 'mode', 'static']],
+            'paint': {
+                'circle-radius': 5,
+                'circle-color': '#183F71' // Жёлтый цвет
+            }
+        },
+        // Стили для линий полигона
+        {
+            'id': 'gl-draw-line',
+            'type': 'line',
+            'filter': ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']],
+            'layout': {
+                'line-cap': 'round',
+                'line-join': 'round'
+            },
+            'paint': {
+                'line-color': '#0a2952', // Тёмно-синий цвет
+                'line-width': 2
+            }
+        }
+    ]
+});
+map.addControl(draw);
+map.on('draw.create', updateArea);
+map.on('draw.delete', updateArea);
+map.on('draw.update', updateArea);
+function updateArea(e) {
+    const data = draw.getAll();
+    const answer = document.getElementById('calculated-area');
+    if (data.features.length > 0) {
+        const area = turf.area(data); // Площадь в квадратных метрах
+        const area_km2 = area / 1e6; // Площадь в квадратных километрах
+        const area_hectares = area / 1e4; // Площадь в гектарах
+        const rounded_area_m2 = Math.round(area * 100) / 100; // Округляем площадь до двух знаков после запятой
+        const rounded_area_km2 = Math.round(area_km2 * 100) / 100; // Округляем площадь до двух знаков после запятой
+        const rounded_area_hectares = Math.round(area_hectares * 100) / 100; // Округляем площадь до двух знаков после запятой
+
+        const polygon = turf.polygon(data.features[0].geometry.coordinates);
+        const perimeter = turf.length(polygon, {units: 'kilometers'}) * 1000; // Периметр в метрах
+        const rounded_perimeter_m = Math.round(perimeter * 100) / 100; // Округляем периметр до двух знаков после запятой
+        const rounded_perimeter_km = Math.round(perimeter) / 1000; // Округляем периметр до двух знаков после запятой и переводим в километры
+
+        answer.innerHTML = `<p>Площадь: <strong>${rounded_area_km2}</strong> км² (<strong>${rounded_area_hectares}</strong> га)</p>
+                            <hr> <!-- Разделительная линия -->
+                            <p>Периметр: <strong>${rounded_perimeter_km}</strong> км</p>`;
+
+    } else {
+        answer.innerHTML = '';
+        if (e.type !== 'draw.delete')
+            alert('Кликни по карте, чтобы нарисовать полигон участка');
+    }
+}
+function changeStyle(style) {
+    map.setStyle(style);
+}
+document.getElementById('style-selector').addEventListener('change', function() {
+    changeStyle(this.value);
+});
+</script>
+</body>
+</html>

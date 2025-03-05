@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Show polygon information on click</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+<style>
+    /* Существующие стили */
+    body { margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    .calculation-box {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(255, 255, 255, 0.72);
+        padding: 6px;
+        border-radius: 5px;
+        font-size: 14px;
+        max-width: 300px;
+    }
+    .button-container {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        z-index: 1;
+    }
+    .button {
+        padding: 8px 16px;
+        background-color: rgba(128, 128, 128, 0.5);
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .button:hover {
+        background-color: rgba(128, 128, 128, 0.8);
+    }
+
+    /* Стилизация выпадающего списка */
+    #color-column {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1;
+        width: 200px;
+        background-color: rgba(255, 255, 255, 0.75); /* Полупрозрачный фон */
+        padding: 5px;
+        border-radius: 5px; /* Скругленные углы */
+        font-size: 14px;
+        cursor: pointer;
+    }
+</style>
+</head>
+
+<body>
+<div id="map"></div>
+<div class="calculation-box" id="sidebar"></div>
+<div class="button-container">
+    <button class="button" onclick="resetMap()">Reset</button>
+    <button class="button" onclick="toggleFullScreen()">Full Screen</button>
+</div>
+<select id="color-column" onchange="updatePolygonColors()">
+    <option value="Бары">Бары</option>
+</select>
+<script>
+mapboxgl.accessToken = 'pk.eyJ1Ijoic2VhbGltYSIsImEiOiJjbTdvcDUwd2IwN2o4Mm1zZXBraHIzaTQ5In0.AAdfCjRec4FNE5y6Hqtbyw';
+        map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/standard',
+            center: [76.879751, 43.24517],
+            zoom: 12
+});
+
+map.on('load', () => {
+    // Replace this URL with your own GeoJSON data URL
+    const geojsonUrl = 'https://raw.githubusercontent.com/sealaluma/sayakhaaaaaaaaaaaaaaaaaaaaaaaaaat/main/t_objects_hex.geojson';
+
+    // Add a source for your GeoJSON data.
+    map.addSource('custom-data', {
+        'type': 'geojson',
+        'data': geojsonUrl
+    });
+
+    // Add a layer showing your GeoJSON data.
+    map.addLayer({
+    'id': 'custom-data-layer',
+    'type': 'fill',
+    'source': 'custom-data',
+    'paint': {
+        'fill-color': [
+            'case',
+            ['has', 'Всего'], 
+            ['interpolate', ['linear'], ['get', 'Всего'], 
+                0, 'rgba(255, 255, 255, 0.2)',  // Very light white
+                30, 'rgba(17, 119, 187, 0.3)',  // Light blue
+                50, 'rgba(0, 170, 0, 0.3)',     // Light green
+                75, 'rgba(255, 204, 0, 0.3)',   // Light yellow
+                105, 'rgba(255, 0, 0, 0.3)'     // Light red
+            ], 
+            'rgba(255, 255, 255, 0)'  // Fully transparent if no data
+        ],
+        'fill-opacity': 0.5,  // Adjust transparency (0 = fully transparent, 1 = solid)
+        'fill-outline-color': 'rgba(0, 0, 0, 1)'  // Black outline, fully visible
+    }
+});
+
+
+    // Add a layer for the highlighted polygon outline.
+    map.addLayer({
+        'id': 'highlighted-polygon-outline',
+        'type': 'line',
+        'source': 'custom-data',
+        'filter': ['==', 'id', ''],
+        'paint': {
+            'line-color': 'rgba(0, 0, 0, 1)',
+            'line-width': 2
+        }
+    });
+
+    // When a click event occurs on a feature in the custom data layer,
+    // open a sidebar with information about the polygon and fly to it.
+    map.on('click', 'custom-data-layer', (e) => {
+        const properties = e.features[0].properties;
+        let sidebarContent = '<div style="width: 100%;">';
+        for (const key in properties) {
+            if (properties.hasOwnProperty(key) && key !== 'Всего' && properties[key] !== 0) {
+                sidebarContent += `<p><strong>${key}:</strong> ${properties[key]}</p>`;
+            }
+        }
+        sidebarContent += '</div>';
+        document.getElementById('sidebar').innerHTML = sidebarContent;
+
+        // Reset the style of all outlines
+        map.setPaintProperty('custom-data-layer', 'fill-outline-color', 'rgba(200, 200, 200, 0.5)');
+        map.setPaintProperty('custom-data-layer', 'fill-outline-width', 1);
+
+        // Set a bold outline for the selected polygon
+        map.setFilter('highlighted-polygon-outline', ['==', 'id', e.features[0].id]);
+        map.setPaintProperty('highlighted-polygon-outline', 'line-width', 4);
+
+        map.flyTo({
+            center: e.lngLat,
+            zoom: 14,
+            essential: true // this animation is considered essential with respect to prefers-reduced-motion
+        });
+    });
+
+    // Change the cursor to a pointer when
+    // the mouse is over the custom data layer.
+    map.on('mouseenter', 'custom-data-layer', () => {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    // Change the cursor back to a pointer
+    // when it leaves the custom data layer.
+    map.on('mouseleave', 'custom-data-layer', () => {
+        map.getCanvas().style.cursor = '';
+    });
+});
+
+function resetMap() {
+    map.setFilter('highlighted-polygon-outline', ['==', 'id', '']);
+    map.flyTo({
+        center: [76.879751, 43.24517],
+        zoom: 12,
+        essential: true // this animation is considered essential with respect to prefers-reduced-motion
+    });
+    document.getElementById('sidebar').innerHTML = '';
+}
+
+function toggleFullScreen() {
+    var button = document.querySelector('.button-container .button:nth-child(2)');
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+        button.textContent = 'Свернуть';
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+            button.textContent = 'Во весь экран';
+        }
+    }
+}
+
+function updatePolygonColors() {
+    const colorProperty = document.getElementById('color-column').value;
+    map.setPaintProperty('custom-data-layer', 'fill-color', [
+        'interpolate',
+        ['linear'],
+        ['get', colorProperty],
+        0, 'rgba(241, 248, 246, 0.45)',
+        1, 'rgba(17, 87, 171, 0.65)',           // тёмно-синий
+        2, 'rgba(0, 128, 128, 0.65)',        // сине-зелёный
+        3, 'rgba(144, 238, 144, 0.65)',      // светло-зелёный
+        5, 'rgba(0, 100, 0, 0.65)'           // тёмно-зелёный
+    ]);
+}
+</script>
+</body>
+</html>

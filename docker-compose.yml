@@ -1,0 +1,22 @@
+version: '3'
+services:
+  deep_analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: itry_deep_analytics
+    ports:
+      - "8506:8506"
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: postgis/postgis:13-3.1
+    container_name: streamlit_postgis
+    environment:
+      POSTGRES_DB: sitcenter_postgis_datalake
+      POSTGRES_USER: la_noche_estrellada
+      POSTGRES_PASSWORD: Cfq,thNb13@
+    ports:
+      - "6592:5439"
